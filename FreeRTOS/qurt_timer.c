@@ -1,59 +1,63 @@
-/*=======================================================================================
-    Copyright (c) 2015 Linux Foundation.
-    All rights reserved.
+/*======================================================================
+   Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
     
-    Redistribution and use in source and binary forms, with or without modification, 
-    are permitted (subject to the limitations in the disclaimer below)provided that 
-    the following conditions are met:
-
-    1.Redistributions of source code must retain the above copyright notice, this list
-      of conditions and the following disclaimer.
+   Redistribution and use in source and binary forms, with or without
+   modification, are permitted (subject to the limitations in the
+   disclaimer below) provided that the following conditions are met:
     
-    2.Redistributions in binary form must reproduce the above copyright notice, this list
-      of conditions and the following disclaimer in the documentation and/or other 
-      materials provided with the distribution.
+      * Redistributions of source code must retain the above copyright
+        notice, this list of conditions and the following disclaimer.
     
-    3.Neither the name of Linux Foundation nor the names of its contributors may be
-      used to endorse or promote products derived from this software without specific 
-      prior written permission.
-       
-    NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS 
-    LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
-    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, 
-    THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR APARTICULAR PURPOSE ARE
-    DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER ORCONTRIBUTORS BE LIABLEFOR ANY
-    DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIALDAMAGES (INCLUDING,
-    BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
-    OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
-    WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE  OR OTHERWISE)
-    ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
-    OF SUCH DAMAGE.
+      * Redistributions in binary form must reproduce the above
+        copyright notice, this list of conditions and the following
+        disclaimer in the documentation and/or other materials provided
+        with the distribution.
+    
+      * Neither the name of The Linux Foundation nor the names of its
+        contributors may be used to endorse or promote products derived
+        from this software without specific prior written permission.
+    
+   NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
+   GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
+   HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+   WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+   MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+   IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+   ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+   DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+   GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+   INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+   IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+   OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+   IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      
-    qurt_timer.c 
+   qurt_timer.c 
 
-    GENERAL DESCRIPTION
-        QuRT timer functions
+   GENERAL DESCRIPTION
+     QuRT timer functions
 
-=======================================================================================*/
+ ======================================================================*/
 
 #include <stdlib.h>
 #include <string.h>
-#include "qurt_timer.h"
-#include "qurt_error.h"
+#include "qurt_internal.h"
+#include "FreeRTOSConfig.h"
 #include "FreeRTOS.h"
 #include "timers.h"
-#include "task.h"
-#include "assert.h"
 
 /*======================================================================
                           EXTERNAL
  ======================================================================*/
+extern void qurt_signal_set(qurt_signal_t *signal, uint32 mask);
 
 /*======================================================================
                           MACROS
  ======================================================================*/
 #define QURT_TIMER_NOTIFY_TYPE_CALLBACK 1
 #define QURT_TIMER_NOTIFY_TYPE_SIGNAL   2
+
+#define QURT_SYSTICK_CLOCK_HZ   configTICK_RATE_HZ
+
 /*======================================================================
                           TYPEDEFS
  ======================================================================*/
@@ -90,6 +94,7 @@ typedef struct _qurt_timer_attr_t
   qurt_time_t           remaining;
   qurt_time_t           start;
   uint32                option;
+  uint32                expire_count;
   _timer_notify_info_t  notify_info;
 }_qurt_timer_attr_t;
 
@@ -112,14 +117,22 @@ void qurt_timer_cb (TimerHandle_t free_rtos_timer_info)
   {
     return;
   }
+  /* change the period for subsequent expiry */ 
+  if (qurt_timer_info->expire_count == 0 && (qurt_timer_info->option & QURT_TIMER_PERIODIC ))
+  {
+      if(pdPASS != xTimerChangePeriod(free_rtos_timer_info, qurt_timer_info->reload, 
+                           portMAX_DELAY ))
+      {
+         ASSERT(0);
+      }
+  }
+  qurt_timer_info->expire_count++;
   if(QURT_TIMER_NOTIFY_TYPE_CALLBACK == qurt_timer_info->notify_info.timer_notify_type )
   {
     qurt_timer_info->notify_info.notify_option.cb_obj.cbfunc(
                         qurt_timer_info->notify_info.notify_option.cb_obj.cbctxt);
   }
-  else if(QURT_TIMER_NOTIFY_TYPE_SIGNAL ==
-
-  qurt_timer_info->notify_info.timer_notify_type )
+  else if(QURT_TIMER_NOTIFY_TYPE_SIGNAL == qurt_timer_info->notify_info.timer_notify_type )
   {
     qurt_signal_set(qurt_timer_info->notify_info.notify_option.sig_obj.sig, 
                     qurt_timer_info->notify_info.notify_option.sig_obj.mask);
@@ -180,19 +193,32 @@ int qurt_timer_create (qurt_timer_t *timer, const qurt_timer_attr_t *attr)
   {
     return QURT_EINVALID;
   }
+  if(pattr->option & QURT_TIMER_ONESHOT )
+  {          
+      /* if one shot timer and reload provided, return error */
+      if (pattr->reload)
+      {
+         return QURT_EINVALID;
+      }
+      reload = pdFALSE;
+  }
+  else if (pattr->option & QURT_TIMER_PERIODIC) 
+  {
+      /* if periodic timer and zero reload provided, return error */
+      if (!pattr->reload)
+      {
+         return QURT_EINVALID;
+      }
+     reload = pdTRUE;
+  }
+  else
+  {
+     reload = pdFALSE;
+  }
   qurt_timer_internal = (_qurt_timer_t *)pvPortMalloc(sizeof(_qurt_timer_t)); 
   if(NULL == qurt_timer_internal)
   {
    return QURT_EMEM;
-  }
-  
-  if(pattr->option & QURT_TIMER_PERIODIC )
-  {     
-     reload = pdTRUE;
-  }
-  else 
-  {
-    reload = pdFALSE;
   }
   
   memcpy(&qurt_timer_internal->qurt_timer_info, pattr, sizeof(_qurt_timer_attr_t));   
@@ -204,7 +230,7 @@ int qurt_timer_create (qurt_timer_t *timer, const qurt_timer_attr_t *attr)
                         qurt_timer_cb);
   if(NULL == qurt_timer_internal->free_rtos_timer_info)
   {
-    free((void *)qurt_timer_internal);
+    vPortFree((void *)qurt_timer_internal);
     return QURT_EFAILED;
   }
   qurt_timer_internal->qurt_timer_info.remaining =  qurt_timer_internal->qurt_timer_info.duration;
@@ -214,10 +240,14 @@ int qurt_timer_create (qurt_timer_t *timer, const qurt_timer_attr_t *attr)
   {     
      return QURT_EOK;
   }
+  
   if(pdPASS != xTimerStart(qurt_timer_internal->free_rtos_timer_info, portMAX_DELAY ))
   {
+    xTimerDelete(qurt_timer_internal->free_rtos_timer_info, portMAX_DELAY );
+    vPortFree((void *)qurt_timer_internal);
     return QURT_EFAILED;
   } 
+  
   qurt_timer_internal->qurt_timer_info.start = xTaskGetTickCount();
   return QURT_EOK;
 }
@@ -265,6 +295,7 @@ int qurt_timer_restart (qurt_timer_t  timer, qurt_time_t  duration)
   {
     return QURT_EINVALID;
   }
+   
   if(pdPASS != xTimerChangePeriod(qurt_timer_internal->free_rtos_timer_info, duration, 
                                   portMAX_DELAY ))
   {
@@ -403,9 +434,22 @@ int qurt_timer_delete (qurt_timer_t  timer)
    _qurt_timer_t *qurt_timer_internal = (_qurt_timer_t *)timer;
    BaseType_t status;
    
+   if(NULL == qurt_timer_internal)
+   {
+      return QURT_EINVALID;
+   }   
+   /* FreeRTOS internally does not stop timer before deleting it*/
    status = xTimerStop(qurt_timer_internal->free_rtos_timer_info, portMAX_DELAY );
-   free((void*) qurt_timer_internal);
-   return status;
+   if(pdPASS == status)
+   {
+      status = xTimerDelete(qurt_timer_internal->free_rtos_timer_info, portMAX_DELAY );
+      vPortFree((void*) qurt_timer_internal);
+   }
+   if( status != pdPASS)
+   {
+      return QURT_EFAILED;
+   }
+   return QURT_EOK;
 }
 
 qurt_time_t qurt_timer_get_ticks (void )
@@ -418,9 +462,38 @@ qurt_time_t qurt_timer_get_remaining(void)
   return (qurt_time_t)QURT_TIME_WAIT_FOREVER;
 }
 
+qurt_time_t qurt_timer_convert_time_to_ticks(qurt_time_t time, qurt_time_unit_t unit_of_time )
+{
+    switch (unit_of_time)
+    {
+        case QURT_TIME_TICK :
+           return time;
+        
+        /* Round up
+           1ms - 10ms = 1 tick
+           11ms - 20 ms = 2 ticks
+        */
+        case QURT_TIME_MSEC :
+            return (((time * QURT_SYSTICK_CLOCK_HZ) + 999) /1000);
+       
+        default :
+            return QURT_TIME_WAIT_FOREVER;
+    }
+}
 
-
-
-
+qurt_time_t qurt_timer_convert_ticks_to_time(qurt_time_t ticks, qurt_time_unit_t time_unit)
+{
+    switch (time_unit)
+    {
+        case QURT_TIME_TICK :
+           return ticks;
+        
+        case QURT_TIME_MSEC :
+            return ((ticks * 1000)/QURT_SYSTICK_CLOCK_HZ);
+       
+        default :
+            return QURT_TIME_WAIT_FOREVER;
+    }
+}
 
 

@@ -1,49 +1,48 @@
-/*=======================================================================================
-    Copyright (c) 2015 Linux Foundation.
-    All rights reserved.
+/*======================================================================
+   Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
     
-    Redistribution and use in source and binary forms, with or without modification, 
-    are permitted (subject to the limitations in the disclaimer below)provided that 
-    the following conditions are met:
-
-    1.Redistributions of source code must retain the above copyright notice, this list
-      of conditions and the following disclaimer.
+   Redistribution and use in source and binary forms, with or without
+   modification, are permitted (subject to the limitations in the
+   disclaimer below) provided that the following conditions are met:
     
-    2.Redistributions in binary form must reproduce the above copyright notice, this list
-      of conditions and the following disclaimer in the documentation and/or other 
-      materials provided with the distribution.
+      * Redistributions of source code must retain the above copyright
+        notice, this list of conditions and the following disclaimer.
     
-    3.Neither the name of Linux Foundation nor the names of its contributors may be
-      used to endorse or promote products derived from this software without specific 
-      prior written permission.
-       
-    NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS 
-    LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
-    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, 
-    THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR APARTICULAR PURPOSE ARE
-    DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER ORCONTRIBUTORS BE LIABLEFOR ANY
-    DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIALDAMAGES (INCLUDING,
-    BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
-    OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
-    WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE  OR OTHERWISE)
-    ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
-    OF SUCH DAMAGE.
+      * Redistributions in binary form must reproduce the above
+        copyright notice, this list of conditions and the following
+        disclaimer in the documentation and/or other materials provided
+        with the distribution.
+    
+      * Neither the name of The Linux Foundation nor the names of its
+        contributors may be used to endorse or promote products derived
+        from this software without specific prior written permission.
+    
+   NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
+   GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
+   HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+   WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+   MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+   IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+   ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+   DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+   GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+   INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+   IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+   OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+   IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
                            
-    qurt_rmutex.c
+   qurt_rmutex.c
 
-    GENERAL DESCRIPTION 
-        QuRT recursive mutex functions
+   GENERAL DESCRIPTION 
+     QuRT recursive mutex functions
 
- ======================================================================================*/
+ ======================================================================*/
 
 #ifdef FEATURE_MUTEX_RECURSIVE
 
-#include "qurt_mutex.h"
-#include "qurt_error.h"
+#include "qurt_internal.h"
 #include "FreeRTOS.h"
-#include "task.h"
 #include "semphr.h"
-#include "assert.h"
 
 /*======================================================================
                           EXTERNAL
@@ -79,13 +78,6 @@ void qurt_mutex_init(qurt_mutex_t *lock)
    xSemaphoreGive(lock_internal->binary_sem);
 }
 
-void qurt_mutex_lock(qurt_mutex_t *lock)
-{
-   /* mutex lock timed is not supported from ISR */
-   ASSERT(0 == qurt_system_get_ipsr());
-   qurt_mutex_lock_timed(lock, portMAX_DELAY);
-}
-
 int qurt_mutex_lock_timed(qurt_mutex_t *lock, qurt_time_t timeout)
 {
    TaskHandle_t curr_task; 
@@ -94,6 +86,10 @@ int qurt_mutex_lock_timed(qurt_mutex_t *lock, qurt_time_t timeout)
    
    /* mutex lock timed is not supported from ISR */
    ASSERT(0 == qurt_system_get_ipsr());
+   if(NULL == lock_internal)
+   {
+    return QURT_EINVALID;
+   }
    curr_task = xTaskGetCurrentTaskHandle();
    if(lock_internal->owner == curr_task)
    {
@@ -109,6 +105,13 @@ int qurt_mutex_lock_timed(qurt_mutex_t *lock, qurt_time_t timeout)
    lock_internal->count++;
    lock_internal->owner = xTaskGetCurrentTaskHandle();
    return QURT_EOK;
+}
+
+void qurt_mutex_lock(qurt_mutex_t *lock)
+{
+   /* mutex lock timed is not supported from ISR */
+   ASSERT(0 == qurt_system_get_ipsr());
+   qurt_mutex_lock_timed(lock, portMAX_DELAY);
 }
 
 void qurt_mutex_unlock(qurt_mutex_t *lock)
@@ -133,7 +136,7 @@ void qurt_mutex_unlock(qurt_mutex_t *lock)
          {
             /*higher_prio_task_woken must be initialised to pDFALSE */
             BaseType_t higher_prio_task_woken = pdFALSE;
-            ret = xSemaphoreGive(lock_internal->binary_sem, &higher_prio_task_woken);
+            ret = xSemaphoreGiveFromISR(lock_internal->binary_sem, &higher_prio_task_woken);
             
             /*It is possible that a semaphore will have one or more task blocked 
             on it waiting to give semaphore. Calling xSemaphoreGive FromISR will 
@@ -153,7 +156,11 @@ int qurt_mutex_try_lock(qurt_mutex_t *lock)
    TaskHandle_t curr_task; 
    BaseType_t ret ;
    _qurt_mutex_t *lock_internal = (_qurt_mutex_t *)lock;
-   
+      
+   if(NULL == lock_internal)
+   {
+    return QURT_EINVALID;
+   }
    curr_task = xTaskGetCurrentTaskHandle();
    if(lock_internal->owner == curr_task)
    {
@@ -196,10 +203,13 @@ int qurt_mutex_try_lock(qurt_mutex_t *lock)
 void qurt_mutex_destroy(qurt_mutex_t *lock)
 {
    _qurt_mutex_t *lock_internal = (_qurt_mutex_t *)lock;
-   vSemaphoreDelete(lock_internal->binary_sem);
-   lock_internal->binary_sem = NULL;
-   lock_internal->owner = NULL;
-   lock_internal->count = 0;
+   if(NULL != lock_internal)
+   {
+      vSemaphoreDelete(lock_internal->binary_sem);
+      lock_internal->binary_sem = NULL;
+      lock_internal->owner = NULL;
+      lock_internal->count = 0;
+   }
 }
 
 #endif /* FEATURE_MUTEX_RECURSIVE */

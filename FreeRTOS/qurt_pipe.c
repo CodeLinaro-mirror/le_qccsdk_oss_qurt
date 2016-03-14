@@ -1,46 +1,47 @@
-/*=======================================================================================
-    Copyright (c) 2015 Linux Foundation.
-    All rights reserved.
+/*======================================================================
+   Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
     
-    Redistribution and use in source and binary forms, with or without modification, 
-    are permitted (subject to the limitations in the disclaimer below)provided that 
-    the following conditions are met:
-
-    1.Redistributions of source code must retain the above copyright notice, this list
-      of conditions and the following disclaimer.
+   Redistribution and use in source and binary forms, with or without
+   modification, are permitted (subject to the limitations in the
+   disclaimer below) provided that the following conditions are met:
     
-    2.Redistributions in binary form must reproduce the above copyright notice, this list
-      of conditions and the following disclaimer in the documentation and/or other 
-      materials provided with the distribution.
+      * Redistributions of source code must retain the above copyright
+        notice, this list of conditions and the following disclaimer.
     
-    3.Neither the name of Linux Foundation nor the names of its contributors may be
-      used to endorse or promote products derived from this software without specific 
-      prior written permission.
-       
-    NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS 
-    LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
-    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, 
-    THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR APARTICULAR PURPOSE ARE
-    DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER ORCONTRIBUTORS BE LIABLEFOR ANY
-    DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIALDAMAGES (INCLUDING,
-    BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
-    OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
-    WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE  OR OTHERWISE)
-    ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
-    OF SUCH DAMAGE.
+      * Redistributions in binary form must reproduce the above
+        copyright notice, this list of conditions and the following
+        disclaimer in the documentation and/or other materials provided
+        with the distribution.
+    
+      * Neither the name of The Linux Foundation nor the names of its
+        contributors may be used to endorse or promote products derived
+        from this software without specific prior written permission.
+    
+   NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
+   GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
+   HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+   WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+   MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+   IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+   ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+   DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+   GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+   INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+   IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+   OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+   IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
                            
-    qurt_pipe.c 
+                        
+   qurt_pipe.c 
 
-    GENERAL DESCRIPTION 
-        QuRT Pipe functions
+   GENERAL DESCRIPTION 
+     QuRT Pipe functions
 
- ======================================================================================*/
+ ======================================================================*/
 
-#include "qurt_pipe.h"
-#include "qurt_error.h"
+#include "qurt_internal.h"
 #include "FreeRTOS.h"
 #include "queue.h"
-#include "assert.h"
 
 /*======================================================================
                           EXTERNAL
@@ -105,7 +106,29 @@ int qurt_pipe_create(qurt_pipe_t *pipe, qurt_pipe_attr_t *attr)
 
 void qurt_pipe_delete(qurt_pipe_t pipe)
 {
-   vQueueDelete((QueueHandle_t)pipe);
+   if( NULL != pipe)
+   {
+      vQueueDelete((QueueHandle_t)pipe);
+   }
+}
+
+int qurt_pipe_send_timed(qurt_pipe_t pipe, void *data, qurt_time_t timeout)
+{
+   BaseType_t ret;
+   if( NULL == pipe)
+   {
+     return QURT_EINVALID;
+   }
+   
+   /* send an item over pipe is not supported from ISR */
+   ASSERT(0 == qurt_system_get_ipsr());
+   
+   ret = xQueueSendToBack((QueueHandle_t)pipe, (const void *)data, timeout);
+   if(pdPASS != ret )
+   {
+    return QURT_EFAILED_TIMEOUT;
+   }
+   return QURT_EOK;  
 }
 
 void qurt_pipe_send(qurt_pipe_t pipe, void *data)
@@ -150,7 +173,7 @@ int qurt_pipe_try_send(qurt_pipe_t pipe, void *data)
    return QURT_EOK; 
 }
 
-int qurt_pipe_send_timed(qurt_pipe_t pipe, void *data, qurt_time_t timeout)
+int qurt_pipe_receive_timed(qurt_pipe_t pipe, void *data, qurt_time_t timeout)
 {
    BaseType_t ret;
    if( NULL == pipe)
@@ -158,15 +181,16 @@ int qurt_pipe_send_timed(qurt_pipe_t pipe, void *data, qurt_time_t timeout)
      return QURT_EINVALID;
    }
    
-   /* send an item over pipe is not supported from ISR */
+   /* receive an item over pipe is not supported from ISR */
    ASSERT(0 == qurt_system_get_ipsr());
    
-   ret = xQueueSendToBack((QueueHandle_t)pipe, (const void *)data, timeout);
+   /* receive an item over pipe is not supported from ISR */
+   ret = xQueueReceive((QueueHandle_t)pipe, data, timeout);
    if(pdPASS != ret )
    {
     return QURT_EFAILED_TIMEOUT;
    }
-   return QURT_EOK;  
+   return QURT_EOK; 
 }
 
 void qurt_pipe_receive(qurt_pipe_t pipe, void *data)
@@ -176,7 +200,7 @@ void qurt_pipe_receive(qurt_pipe_t pipe, void *data)
    qurt_pipe_receive_timed( pipe, data, portMAX_DELAY);
 }
 
-int qurt_pipe_try_receive(qurt_pipe_t *pipe, void *data)
+int qurt_pipe_try_receive(qurt_pipe_t pipe, void *data)
 {
    BaseType_t ret;
    /*higher_prio_task_woken must be initialised to pDFALSE */
@@ -211,28 +235,13 @@ int qurt_pipe_try_receive(qurt_pipe_t *pipe, void *data)
    return QURT_EOK; 
 }
 
-int qurt_pipe_receive_timed(qurt_pipe_t pipe, void *data, qurt_time_t timeout)
+int qurt_pipe_flush(qurt_pipe_t pipe)
 {
-   BaseType_t ret;
    if( NULL == pipe)
    {
      return QURT_EINVALID;
    }
    
-   /* receive an item over pipe is not supported from ISR */
-   ASSERT(0 == qurt_system_get_ipsr());
-   
-   /* receive an item over pipe is not supported from ISR */
-   ret = xQueueReceive((QueueHandle_t)pipe, data, timeout);
-   if(pdPASS != ret )
-   {
-    return QURT_EFAILED_TIMEOUT;
-   }
-   return QURT_EOK; 
-}
-
-int qurt_pipe_flush(qurt_pipe_t pipe)
-{
    if ( pdPASS != xQueueReset((QueueHandle_t)pipe))
    {
     return QURT_EFAILED ;
