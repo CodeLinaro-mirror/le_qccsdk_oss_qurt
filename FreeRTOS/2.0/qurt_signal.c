@@ -56,12 +56,6 @@ extern uint32 qurt_system_get_ipsr( void );
                           TYPEDEFS
  ======================================================================*/
 
-/** Signal Object */
-typedef struct _qurt_signal_t {
-   EventGroupHandle_t sig_group;
-}_qurt_signal_t;
-
-
 /*======================================================================
                           FUNCTIONS
 =======================================================================*/
