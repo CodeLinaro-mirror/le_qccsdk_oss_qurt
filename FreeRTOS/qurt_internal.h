@@ -209,16 +209,10 @@ typedef struct qurt_info  /* 8 byte aligned */
 }qurt_info_t;
 
 /** QuRT mutex type */
-typedef struct qurt_mutex  /* 8 byte aligned */
-{
-   unsigned long long _bSpace[QURT_MUTEX_OBJ_SIZE_BYTES/sizeof(unsigned long long)];
-}qurt_mutex_t;
+typedef unsigned int qurt_mutex_t;
 
 /** QuRT signal type */
-typedef struct qurt_signal_t  /* 8 byte aligned */
-{
-   unsigned long long _bSpace[QURT_SIGNAL_OBJ_SIZE_BYTES/sizeof(unsigned long long)];
-}qurt_signal_t;
+typedef unsigned int qurt_signal_t;
 
 /** Thread ID type */
 typedef unsigned long qurt_thread_t;

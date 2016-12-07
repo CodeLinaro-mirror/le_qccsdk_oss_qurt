@@ -58,7 +58,7 @@ extern uint32 qurt_system_get_ipsr( void );
                           TYPEDEFS
  ======================================================================*/
 
-/** Signal Object */
+/** Mutex Object */
 typedef struct _qurt_mutex_t {
    SemaphoreHandle_t binary_sem;
    TaskHandle_t owner;
@@ -68,28 +68,67 @@ typedef struct _qurt_mutex_t {
 /*======================================================================
                           FUNCTIONS
 =======================================================================*/
-
-void qurt_mutex_init(qurt_mutex_t *lock)
+qurt_mutex_t qurt_mutex_memheap_init(void *lock)
 {
    _qurt_mutex_t *lock_internal = (_qurt_mutex_t *)lock;
    lock_internal->owner = NULL;
    lock_internal->count = 0;
    lock_internal->binary_sem = xSemaphoreCreateBinary();
    xSemaphoreGive(lock_internal->binary_sem);
+   return (qurt_mutex_t)lock;
+}
+
+int qurt_mutex_create(qurt_mutex_t *lock)
+{
+   _qurt_mutex_t *lock_internal;
+   
+   if(NULL == lock)
+      //Invalid argument value passed.
+      return QURT_EINVALID;
+   
+   /* Try to allocate memory for _qurt_mutex_t object */
+   lock_internal = (_qurt_mutex_t *)malloc(sizeof(_qurt_mutex_t));
+   if(NULL !=  lock_internal)
+   {
+      lock_internal->binary_sem = xSemaphoreCreateBinary();
+      if(NULL != lock_internal->binary_sem)
+      {
+         lock_internal->owner = NULL;
+         lock_internal->count = 0;
+         xSemaphoreGive(lock_internal->binary_sem);
+         *lock = (qurt_mutex_t)lock_internal;
+         return QURT_EOK;
+      }
+      else
+      {
+         /*Failed to create Mutex.
+         Free internal lock object and return error*/
+         free(lock_internal);
+         return QURT_EFAILED;
+      }
+   }
+   /*Not enough Memory. Mutex creation failed*/
+   return QURT_EMEM;
 }
 
 int qurt_mutex_lock_timed(qurt_mutex_t *lock, qurt_time_t timeout)
 {
    TaskHandle_t curr_task; 
    BaseType_t ret ;
-   _qurt_mutex_t *lock_internal = (_qurt_mutex_t *)lock;
+   _qurt_mutex_t *lock_internal;
+   
+   if(NULL == lock)
+      return QURT_EINVALID;
+   
+   lock_internal = (_qurt_mutex_t *)*lock;
    
    /* mutex lock timed is not supported from ISR */
    ASSERT(0 == qurt_system_get_ipsr());
    if(NULL == lock_internal)
-   {
-    return QURT_EINVALID;
-   }
+      /*Handle passed in to this function doesn't points
+      to the internal mutex type*/
+      return QURT_EFAILED;
+   
    curr_task = xTaskGetCurrentTaskHandle();
    if(lock_internal->owner == curr_task)
    {
@@ -117,8 +156,17 @@ void qurt_mutex_lock(qurt_mutex_t *lock)
 void qurt_mutex_unlock(qurt_mutex_t *lock)
 {
    TaskHandle_t curr_task; 
-   _qurt_mutex_t *lock_internal = (_qurt_mutex_t *)lock;
+   _qurt_mutex_t *lock_internal;
    BaseType_t ret ;
+   
+   if(NULL == lock)
+      return;
+   
+   lock_internal = (_qurt_mutex_t *)*lock;
+   if(NULL == lock_internal)
+      /*Handle passed in to this function doesn't points
+      to the internal mutex type*/
+      return;
    
    curr_task = xTaskGetCurrentTaskHandle();
    if(lock_internal->owner == curr_task)
@@ -155,12 +203,18 @@ int qurt_mutex_try_lock(qurt_mutex_t *lock)
 {
    TaskHandle_t curr_task; 
    BaseType_t ret ;
-   _qurt_mutex_t *lock_internal = (_qurt_mutex_t *)lock;
+   _qurt_mutex_t *lock_internal;
+   
+   if(NULL == lock)
+      return QURT_EINVALID;
+   
+   lock_internal = (_qurt_mutex_t *)*lock;
       
    if(NULL == lock_internal)
-   {
-    return QURT_EINVALID;
-   }
+      /*Handle passed in to this function doesn't points
+      to the internal mutex type*/
+      return QURT_EFAILED;
+      
    curr_task = xTaskGetCurrentTaskHandle();
    if(lock_internal->owner == curr_task)
    {
@@ -200,7 +254,7 @@ int qurt_mutex_try_lock(qurt_mutex_t *lock)
    return QURT_EOK;
 }
 
-void qurt_mutex_destroy(qurt_mutex_t *lock)
+void qurt_mutex_memheap_destroy(void *lock)
 {
    _qurt_mutex_t *lock_internal = (_qurt_mutex_t *)lock;
    if(NULL != lock_internal)
@@ -209,6 +263,20 @@ void qurt_mutex_destroy(qurt_mutex_t *lock)
       lock_internal->binary_sem = NULL;
       lock_internal->owner = NULL;
       lock_internal->count = 0;
+   }
+}
+
+void qurt_mutex_delete(qurt_mutex_t *lock)
+{
+   if(NULL == lock)
+      return;
+   
+   _qurt_mutex_t *lock_internal = (_qurt_mutex_t *)*lock;
+   if(NULL != lock_internal)
+   {
+      vSemaphoreDelete(lock_internal->binary_sem);
+      lock_internal->binary_sem = NULL;
+      free(lock_internal);
    }
 }
 

@@ -59,34 +59,51 @@ extern uint32 qurt_system_get_ipsr( void );
                           TYPEDEFS
  ======================================================================*/
 
-/** Signal Object */
-typedef struct _qurt_mutex_t {
-   SemaphoreHandle_t pimutex;
-}_qurt_mutex_t;
-
-
 /*======================================================================
                           FUNCTIONS
 =======================================================================*/
+qurt_mutex_t qurt_mutex_memheap_init(void *lock)
+{   
+   SemaphoreHandle_t pMutex = xSemaphoreCreateRecursiveMutex();
+   return (qurt_mutex_t)pMutex;
+}
 
-void qurt_mutex_init(qurt_mutex_t *lock)
+int qurt_mutex_create(qurt_mutex_t *lock)
 {
-   _qurt_mutex_t *lock_internal = (_qurt_mutex_t *)lock;
-   lock_internal->pimutex = xSemaphoreCreateRecursiveMutex();
+   SemaphoreHandle_t pMutex;
+      
+   if(NULL != lock)
+   {  
+     /*Create the recursive mutex*/
+      pMutex= xSemaphoreCreateRecursiveMutex();
+      
+      if(NULL != pMutex)
+      {
+         *lock = (qurt_mutex_t)pMutex;
+         return QURT_EOK;
+      }
+      else
+         return QURT_EFAILED;
+   }
+   return QURT_EINVALID;
 }
 
 int qurt_mutex_lock_timed(qurt_mutex_t *lock, qurt_time_t timeout)
 {
    BaseType_t ret; 
-   _qurt_mutex_t *lock_internal = (_qurt_mutex_t *)lock;
+   
+   if(NULL == lock)
+      return QURT_EINVALID;
+   
+   SemaphoreHandle_t pMutex = (SemaphoreHandle_t)*lock;
    
    /* mutex lock timed is not supported from ISR */
    ASSERT(0 == qurt_system_get_ipsr());
-   if(NULL == lock_internal)
-   {
-    return QURT_EINVALID;
-   }
-   ret = xSemaphoreTakeRecursive(lock_internal->pimutex , (TickType_t)timeout);
+   
+   if(NULL == pMutex)
+      return QURT_EINVALID;
+   
+   ret = xSemaphoreTakeRecursive(pMutex , (TickType_t)timeout);
    if(pdPASS != ret)
    {
     return QURT_EFAILED_TIMEOUT;
@@ -96,43 +113,68 @@ int qurt_mutex_lock_timed(qurt_mutex_t *lock, qurt_time_t timeout)
 
 void qurt_mutex_lock(qurt_mutex_t *lock)
 {
-   _qurt_mutex_t *lock_internal = (_qurt_mutex_t *)lock;
+   if(NULL == lock)
+      return;
+   
+   SemaphoreHandle_t pMutex = (SemaphoreHandle_t)*lock;
    
    /* mutex lock timed is not supported from ISR */
    ASSERT(0 == qurt_system_get_ipsr());
-   xSemaphoreTakeRecursive(lock_internal->pimutex , portMAX_DELAY);
+   xSemaphoreTakeRecursive(pMutex , portMAX_DELAY);
 }
 
 void qurt_mutex_unlock(qurt_mutex_t *lock)
 {
-   _qurt_mutex_t *lock_internal = (_qurt_mutex_t *)lock;
-   xSemaphoreGiveRecursive(lock_internal->pimutex );
+   if(NULL == lock)
+      return;
+   
+   SemaphoreHandle_t pMutex = (SemaphoreHandle_t)*lock;
+   xSemaphoreGiveRecursive(pMutex);
 }
 
 int qurt_mutex_try_lock(qurt_mutex_t *lock)
 {
    BaseType_t ret; 
-   _qurt_mutex_t *lock_internal = (_qurt_mutex_t *)lock;   
+   SemaphoreHandle_t pMutex;
    
-   if(NULL == lock_internal)
+   if(NULL == lock)
+      return QURT_EINVALID;
+   
+   pMutex = (SemaphoreHandle_t)*lock;   
+   
+   if(NULL == pMutex)
    {
-    return QURT_EINVALID;
+      return QURT_EINVALID;
    }
-   ret = xSemaphoreTakeRecursive(lock_internal->pimutex , 0);
+   ret = xSemaphoreTakeRecursive(pMutex , 0);
    if(pdPASS != ret)
    {
-    return QURT_EFAILED;
+      return QURT_EFAILED;
    }
    return QURT_EOK;
 }
 
-void qurt_mutex_destroy(qurt_mutex_t *lock)
+void qurt_mutex_memheap_destroy(void *lock)
 {
-   _qurt_mutex_t *lock_internal = (_qurt_mutex_t *)lock;
-   if(NULL != lock_internal)
+   SemaphoreHandle_t pMutex = (SemaphoreHandle_t)lock;
+   if(NULL != pMutex)
    {
-      vSemaphoreDelete(lock_internal->pimutex);
-      lock_internal->pimutex = NULL;
+      vSemaphoreDelete(pMutex);
+   }
+}
+
+void qurt_mutex_delete(qurt_mutex_t *lock)
+{
+   SemaphoreHandle_t pMutex;
+   
+   if(NULL == lock)
+      return;
+   
+   pMutex = (SemaphoreHandle_t *)*lock;
+   if(NULL != pMutex)
+   {
+      vSemaphoreDelete(pMutex);
+      *lock = NULL;
    }
 }
 

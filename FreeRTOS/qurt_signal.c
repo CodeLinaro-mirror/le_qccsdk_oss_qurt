@@ -65,20 +65,23 @@ typedef struct _qurt_signal_t {
 /*======================================================================
                           FUNCTIONS
 =======================================================================*/
-
-void qurt_signal_init(qurt_signal_t *signal)
+int qurt_signal_create(qurt_signal_t *signal)
 {
-   _qurt_signal_t *signal_internal = (_qurt_signal_t *)signal;  
-   signal_internal->sig_group = xEventGroupCreate();
-}
-
-void qurt_signal_destroy(qurt_signal_t *signal)
-{
-   _qurt_signal_t *signal_internal = (_qurt_signal_t *)signal;
-   if(NULL != signal_internal)
+   
+   EventGroupHandle_t sig_group;
+   
+   if(NULL != signal)
    {
-      vEventGroupDelete(signal_internal->sig_group);
+      sig_group = xEventGroupCreate();
+      if(NULL != sig_group)
+      {
+         *signal = (qurt_signal_t)sig_group;
+         return QURT_EOK;
+      }
+      else
+         return QURT_EFAILED;
    }
+   return QURT_EINVALID;
 }
 
 int qurt_signal_wait_timed(qurt_signal_t *signal, uint32 mask, 
@@ -88,12 +91,12 @@ int qurt_signal_wait_timed(qurt_signal_t *signal, uint32 mask,
    BaseType_t wait_all_bits = pdFALSE;
    EventBits_t set_signal = 0 ;
    uint32 sig_mask;
-   _qurt_signal_t *signal_internal = (_qurt_signal_t *)signal;
+   EventGroupHandle_t sig_group;
    
-   if(NULL == signal_internal)
-   {
+   if((NULL == signal) || (NULL == *signal))
       return QURT_EINVALID;
-   }
+   
+   sig_group = (EventGroupHandle_t)*signal;
    /* signal wait is not supported from ISR */
    ASSERT(0 == qurt_system_get_ipsr());    
    if(attribute & QURT_SIGNAL_ATTR_CLEAR_MASK )
@@ -106,7 +109,7 @@ int qurt_signal_wait_timed(qurt_signal_t *signal, uint32 mask,
    }
 
    /* Wait for ever */
-   set_signal = xEventGroupWaitBits(signal_internal->sig_group,   
+   set_signal = xEventGroupWaitBits(sig_group,   
                                mask,                  
                                clear_on_exit,               
                                wait_all_bits,      
@@ -140,22 +143,27 @@ uint32 qurt_signal_wait(qurt_signal_t *signal, uint32 mask, uint32 attribute)
 
 void qurt_signal_set(qurt_signal_t *signal, uint32 mask)
 {
-   _qurt_signal_t *signal_internal = (_qurt_signal_t *)signal;
+   EventGroupHandle_t sig_group;
    BaseType_t result;
    
+   if((NULL == signal) || (!*signal))
+      return;
+   
+   sig_group = (EventGroupHandle_t)*signal;
+      
    /* Assert if application attempts to set reserved control masks*/
    ASSERT(!(mask & QURT_SIGNAL_MASK_CONTROL_BYTES));
    
    /* if running in thread mode */
    if( 0 == qurt_system_get_ipsr())
    {
-      result = xEventGroupSetBits( signal_internal->sig_group, mask );
+      result = xEventGroupSetBits(sig_group, mask);
    }
    else
    {
       /*higher_prio_task_woken must be initialised to pDFALSE */
       BaseType_t higher_prio_task_woken = pdFALSE;
-      result = xEventGroupSetBitsFromISR( signal_internal->sig_group, mask, 
+      result = xEventGroupSetBitsFromISR(sig_group, mask, 
                                    &higher_prio_task_woken);
       if(result != pdFAIL)
       {
@@ -168,7 +176,12 @@ void qurt_signal_set(qurt_signal_t *signal, uint32 mask)
 
 void qurt_signal_clear(qurt_signal_t *signal, uint32 mask)
 {
-   _qurt_signal_t *signal_internal = (_qurt_signal_t *)signal;
+   EventGroupHandle_t sig_group;
+   
+   if((NULL == signal) || (!*signal))
+      return;
+   
+   sig_group = (EventGroupHandle_t)*signal;
    
    /* Assert if application attempts to clear reserved control masks*/
    ASSERT(!(mask & QURT_SIGNAL_MASK_CONTROL_BYTES));
@@ -176,27 +189,43 @@ void qurt_signal_clear(qurt_signal_t *signal, uint32 mask)
    /* if running in thread mode */
    if( 0 == qurt_system_get_ipsr())
    {
-      xEventGroupClearBits( signal_internal->sig_group, mask );
+      xEventGroupClearBits(sig_group, mask);
    }
    else
    {
-      xEventGroupClearBitsFromISR( signal_internal->sig_group, mask );
+      xEventGroupClearBitsFromISR(sig_group, mask);
    }
 }
 
 uint32 qurt_signal_get(qurt_signal_t *signal)
 {
    EventBits_t get_signal =0 ; 
-   _qurt_signal_t *signal_internal = (_qurt_signal_t *)signal;
+   EventGroupHandle_t sig_group;
+   
+   if((NULL == signal) || (!*signal))
+      return QURT_EINVALID;
+   
+   sig_group = (EventGroupHandle_t)*signal;
    
    /* if running in thread mode */
    if( 0 == qurt_system_get_ipsr())
    {
-      get_signal = xEventGroupGetBits( signal_internal->sig_group );
+      get_signal = xEventGroupGetBits(sig_group);
    }
    else
    {
-      get_signal = xEventGroupGetBitsFromISR( signal_internal->sig_group );
+      get_signal = xEventGroupGetBitsFromISR(sig_group);
    }
    return (uint32)get_signal;
+}
+
+void qurt_signal_delete(qurt_signal_t *signal)
+{
+   EventGroupHandle_t sig_group;
+   
+   if((NULL == signal) || (!*signal))
+      return;
+   
+   sig_group = (EventGroupHandle_t)*signal;
+   vEventGroupDelete(sig_group);
 }
