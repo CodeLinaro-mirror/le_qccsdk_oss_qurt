@@ -109,8 +109,14 @@ void vPortSuppressTicksAndSleep(TickType_t idle_time )
 {
    _qurt_info_t *_qurt_info = (_qurt_info_t *)&qurt_info;
    if(_qurt_info->idlehook != NULL)
-   {
+   {  
+      _qurt_info->idle_time = (uint32)idle_time;
       _qurt_info->idlehook(idle_time);
    }
 }
 
+uint32 qurt_system_get_idle_time( void )
+{  
+	_qurt_info_t *_qurt_info = (_qurt_info_t *)&qurt_info;
+    return _qurt_info->idle_time;
+}

@@ -178,6 +178,7 @@ typedef struct _qurt_info_t
   void (*bsphook)(void);
   uint8 *rtos_heap_start;
   unsigned long rtos_heap_size; 
+  uint32 idle_time;
 }_qurt_info_t; 
 
 /* qurt_interrupt_handler_func_ptr_t type */
