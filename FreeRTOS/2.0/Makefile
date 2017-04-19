@@ -52,7 +52,7 @@ AR=arm-none-eabi-ar
 RM = rm -rf
 
 #Specify COPT FLAGS
-COPTS := -c -g -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mthumb -mfloat-abi=hard -fno-inline-functions -Os -O3 -fno-zero-initialized-in-bss -std=c99 -fno-short-enums -mapcs-frame
+COPTS := -c -g -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mthumb -mfloat-abi=hard -fno-inline-functions -Os -O3 -fno-zero-initialized-in-bss -std=c99 -fno-short-enums -mapcs-frame -gdwarf-3
 
 #Specify preprocessor flag/feature defines
 DEFINES := -D FEATURE_MUTEX_PI_RECURSIVE -D QURT_THREAD_MAX_PRIORITIES=32
@@ -60,8 +60,8 @@ DEFINES := -D FEATURE_MUTEX_PI_RECURSIVE -D QURT_THREAD_MAX_PRIORITIES=32
 #Specify Include paths here
 INCLUDES := \
   -I. \
-  -I../../../FreeRTOS/FreeRTOS/FreeRTOS/Demo/QUARTZ \
-  -I../../../FreeRTOS/FreeRTOS/FreeRTOS/Source/include \
+  -I../../../FreeRTOS/1.0/FreeRTOS/Demo/QUARTZ \
+  -I../../../FreeRTOS/1.0/FreeRTOS/Source/include \
 
 #Set CFLAGS
 CFLAGS = $(COPTS) $(DEFINES) $(INCLUDES)
