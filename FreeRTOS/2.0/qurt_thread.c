@@ -1,5 +1,5 @@
 /*======================================================================
-   Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
+   Copyright (c) 2015-2017, The Linux Foundation. All rights reserved.
     
    Redistribution and use in source and binary forms, with or without
    modification, are permitted (subject to the limitations in the
@@ -157,6 +157,11 @@ int qurt_thread_set_priority (qurt_thread_t thread_id, uint16 newprio)
    vTaskPrioritySet((TaskHandle_t)thread_id, newprio);
    return QURT_EOK;
 } 
+
+int qurt_thread_set_fp_enable(qurt_thread_t thread_id, uint16 fp_enable_flag)
+{
+   /* Stub */
+}
 
 int qurt_thread_get_name  (char *name, uint8 max_len)
 {
