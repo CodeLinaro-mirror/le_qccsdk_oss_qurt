@@ -96,6 +96,8 @@ uint32 qurt_system_power_systick_restore( uint64 tsleep, uint32 syst_rvr, uint32
    uint32 tick_missed_abs;
    uint32 tick_missed_partial;
    uint32 reload_prog;
+   uint32 systick_temp = 0u;
+   uint32 next_unblock_time = 0u;
    
    /* if number of clock cycle in sleep is greater then current count in cvr */
    if( tsleep > syst_cvr)
@@ -108,6 +110,15 @@ uint32 qurt_system_power_systick_restore( uint64 tsleep, uint32 syst_rvr, uint32
       tick_missed_abs = 1 + (syst_cvr - tsleep )/syst_rvr;
       tick_missed_partial = (syst_cvr- tsleep)%syst_rvr; 
    }
+
+   systick_temp = qurt_timer_get_ticks();
+   next_unblock_time = xTaskGetNextTaskUnblockTime();
+   if (tick_missed_abs + systick_temp > next_unblock_time)
+   {
+       tick_missed_abs =
+       tick_missed_abs - (tick_missed_abs + systick_temp - next_unblock_time);
+   }
+
    reload_prog = syst_rvr - tick_missed_partial;
    vTaskStepTick(tick_missed_abs);
    return reload_prog;
