@@ -87,7 +87,7 @@ int qurt_signal_wait_timed(qurt_signal_t *signal, uint32 mask,
    uint32 sig_mask;
    EventGroupHandle_t sig_group;
    
-   if((NULL == signal) || (NULL == *signal))
+   if((NULL == signal) || (!*signal))
       return QURT_EINVALID;
    
    sig_group = (EventGroupHandle_t)*signal;

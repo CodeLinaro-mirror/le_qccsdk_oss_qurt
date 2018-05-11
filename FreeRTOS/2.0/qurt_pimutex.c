@@ -174,7 +174,7 @@ void qurt_mutex_delete(qurt_mutex_t *lock)
    if(NULL != pMutex)
    {
       vSemaphoreDelete(pMutex);
-      *lock = NULL;
+      *lock = 0;
    }
 }
 
