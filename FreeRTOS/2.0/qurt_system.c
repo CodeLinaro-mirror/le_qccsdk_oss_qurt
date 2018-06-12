@@ -110,7 +110,7 @@ uint32 qurt_system_power_systick_restore( uint64 tsleep, uint32 syst_rvr, uint32
    {
        /* initialize reference ticks if they have not been initialized. */
        rtc_reference_tick = (uint64) RTC_READ;
-       systick_reference_tick = (uint64) qurt_timer_get_ticks();
+       systick_reference_tick = (uint64) xTaskGetTickCount();
        b_reference_tick_initialized = TRUE;
    }
 
@@ -126,7 +126,7 @@ uint32 qurt_system_power_systick_restore( uint64 tsleep, uint32 syst_rvr, uint32
    }
 
    rtc_tick_temp = (uint64) RTC_READ;
-   systick_temp = (uint64) qurt_timer_get_ticks();
+   systick_temp = (uint64) xTaskGetTickCount();
 
    /* It's very important to use strict greater than while comparing systick_temp
     * and systick_reference_tick. If >= was used and the first time this function
@@ -145,7 +145,7 @@ uint32 qurt_system_power_systick_restore( uint64 tsleep, uint32 syst_rvr, uint32
    {
        // reset reference tick if wrap around happens
        rtc_reference_tick = (uint64) RTC_READ;
-       systick_reference_tick = (uint64) qurt_timer_get_ticks();
+       systick_reference_tick = (uint64) xTaskGetTickCount();
    }
 
    /* We make the assumption that the two clock will never be different by more
