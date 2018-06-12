@@ -96,10 +96,24 @@ uint32 qurt_system_power_systick_restore( uint64 tsleep, uint32 syst_rvr, uint32
    uint32 tick_missed_abs;
    uint32 tick_missed_partial;
    uint32 reload_prog;
-   uint32 systick_temp = 0u;
+   static boolean b_reference_tick_initialized = FALSE;
+   static uint64 rtc_reference_tick = 0ul;
+   static uint64 systick_reference_tick = 0ul;
+   int32 systick_drift = 0;
+   uint64 systick_delta = 0ul;
+   uint64 rtc_delta_in_systick = 0ul;
+   uint64 rtc_tick_temp = 0ul;
+   uint64 systick_temp = 0ul;
    uint32 next_unblock_time = 0u;
-   
-   /* if number of clock cycle in sleep is greater then current count in cvr */
+
+   if (!b_reference_tick_initialized)
+   {
+       /* initialize reference ticks if they have not been initialized. */
+       rtc_reference_tick = (uint64) RTC_READ;
+       systick_reference_tick = (uint64) qurt_timer_get_ticks();
+       b_reference_tick_initialized = TRUE;
+   }
+
    if( tsleep > syst_cvr)
    {
       tick_missed_abs = 1 + (tsleep - syst_cvr)/syst_rvr;
@@ -108,10 +122,62 @@ uint32 qurt_system_power_systick_restore( uint64 tsleep, uint32 syst_rvr, uint32
    else
    {
       tick_missed_abs = 1 + (syst_cvr - tsleep )/syst_rvr;
-      tick_missed_partial = (syst_cvr- tsleep)%syst_rvr; 
+      tick_missed_partial = (syst_cvr- tsleep)%syst_rvr;
    }
 
-   systick_temp = qurt_timer_get_ticks();
+   rtc_tick_temp = (uint64) RTC_READ;
+   systick_temp = (uint64) qurt_timer_get_ticks();
+
+   /* It's very important to use strict greater than while comparing systick_temp
+    * and systick_reference_tick. If >= was used and the first time this function
+    * got called was after a long sleep (e.g. greater than 10ms), then the mechanism
+    * would falsely consider SysTick running fast because rtc_delta_in_systick
+    * woudl be equal to zero whereas systick_delta would be greater than zero. */
+   if (rtc_tick_temp > rtc_reference_tick && systick_temp > systick_reference_tick)
+   {
+       // convert RTC ticks into SysTick
+       /* There is no practical reason to add overflow check here because SYSTICK_RATE_HZ
+        * would never go beyond SYSTEM_CLOCK. RTC clock will wrap around every 37.2 hours. */
+       rtc_delta_in_systick = (rtc_tick_temp - rtc_reference_tick) * configTICK_RATE_HZ / configSYSTICK_CLOCK_HZ;
+       // systick_delta measures how much SysTick is off compared to RTC
+       systick_delta = systick_temp - systick_reference_tick + tick_missed_abs;
+   } else
+   {
+       // reset reference tick if wrap around happens
+       rtc_reference_tick = (uint64) RTC_READ;
+       systick_reference_tick = (uint64) qurt_timer_get_ticks();
+   }
+
+   /* We make the assumption that the two clock will never be different by more
+    * than 248 days. */
+   if (rtc_delta_in_systick < systick_delta)
+   {
+       // SysTick is running faster than it should
+       systick_drift = (int32) (systick_delta - rtc_delta_in_systick);
+   } else
+   {
+       // SysTick is running slower than it should
+       systick_drift = -((int32) (rtc_delta_in_systick - systick_delta));
+   }
+
+   if (systick_drift > 0)
+   {
+       /* if SysTick is running faster than it should, skip as many tick_missed_abs
+        * as possible. */
+       if (tick_missed_abs > systick_drift)
+       {
+            tick_missed_abs -= (uint32) systick_drift;
+       } else
+       {
+           tick_missed_abs = 0;
+       }
+   } else if (systick_drift < 0)
+   {
+       /* if SysTick is running slower than it should, add the difference in
+        * SysTick to tick_missed_abs. */
+       tick_missed_abs += (uint32) (-systick_drift);
+   }
+
    next_unblock_time = xTaskGetNextTaskUnblockTime();
    if (tick_missed_abs + systick_temp > next_unblock_time)
    {
