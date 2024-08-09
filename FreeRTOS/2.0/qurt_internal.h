@@ -225,6 +225,8 @@ void qurt_thread_attr_set_priority (qurt_thread_attr_t *attr, UBaseType_t priori
 void qurt_thread_attr_set_stack_size (qurt_thread_attr_t *attr, uint16 stack_size);
 long qurt_thread_create(qurt_thread_t *thread_id, qurt_thread_attr_t *attr, void(*entrypoint)(void *), void *arg);
 void qurt_thread_sleep (qurt_thread_t duration);
+int qurt_thread_set_priority (qurt_thread_t thread_id, UBaseType_t newprio);
+TaskHandle_t qurt_thread_get_id (void);
 
 const char *qurt_get_parameters( const char *pcCommandString, UBaseType_t uxWantedParameter, BaseType_t *pxParameterStringLength );
 char* qurt_thread_get_name (TaskHandle_t handle);

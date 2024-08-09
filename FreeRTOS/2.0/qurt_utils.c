@@ -70,6 +70,18 @@ BaseType_t nt_qurt_thread_create( TaskFunction_t pxTaskCode,
 	    }
 }
 
+BaseType_t nt_qurt_thread_set_priority(TaskHandle_t pxCreatedTask, UBaseType_t uxPriority)
+{
+    return qurt_thread_set_priority((qurt_thread_t)pxCreatedTask, uxPriority);
+}
+
+
+TaskHandle_t nt_qurt_thread_get_id(void)
+{
+    return qurt_thread_get_id();
+}
+
+
 TimerHandle_t nt_qurt_timer_create(	char * pcTimerName,
 		const TickType_t xTimerPeriodInTicks,
 		const UBaseType_t uxAutoReload,

@@ -44,6 +44,7 @@ TimerHandle_t nt_qurt_timer_create(	char * pcTimerName,
 		void *  pvTimerID,//const
 		TimerCallbackFunction_t pxCallbackFunction );
 
-
+BaseType_t nt_qurt_thread_set_priority(TaskHandle_t pxCreatedTask, UBaseType_t uxPriority);
+TaskHandle_t nt_qurt_thread_get_id(void);
 
 #endif /* BUILD_FREERTOS_COMMON_CONFIG_FILES_QURT_UTILS_H_ */
