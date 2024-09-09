@@ -136,7 +136,7 @@ qurt_thread_t qurt_thread_get_priority(qurt_thread_t const thread_id)
 int qurt_thread_set_priority (qurt_thread_t thread_id, UBaseType_t newprio)
 {
 	/* convert the qurt priority scheme to freeRTOS */
-	newprio = (QURT_THREAD_MAX_PRIORITIES - 1) - newprio;
+	//newprio = (QURT_THREAD_MAX_PRIORITIES - 1) - newprio;
 	if( newprio > QURT_THREAD_MAX_PRIORITIES -1 )
 	{
 		return QURT_EINVALID;
